@@ -1,0 +1,15 @@
+version: '3.5'
+services:
+  event-collector:
+    image: dcim-data-collector:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dcim-data-collector
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "5"
+        max-size: "10m"
+

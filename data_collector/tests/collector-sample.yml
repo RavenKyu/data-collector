@@ -1,0 +1,60 @@
+---
+- schedule_name: 1-A
+  template_version: 1
+  use: True
+  trigger:
+    type: cron
+    setting:
+      second: '*/3'  # every 3 seconds
+  description: |
+    Test
+  source:
+    type: code
+    code: |
+      import json
+      import requests
+      def main(schedule_name, host, port, _gv):
+          with requests.Session() as s:
+              print(_gv)
+              response = s.get(f'http://{host}:{port}/api/v1/schedules/{schedule_name}/data?last_fetch')
+              if response.status_code != 200:
+                  raise Exception(f'code: {response.status_code}\nmessages: {response.reason}')
+              data = json.loads(response.text)
+          if data:
+            _gv['last'] = data
+          return data
+    arguments:
+        schedule_name: test-1
+        host: localhost
+        port: 5000
+  works:
+    - type: db.influxdb.insert
+      description: |
+        insert data to influxdb
+      arguments:
+        host: localhost
+        port: 8086
+        database: dcim
+        template:
+          data01:
+            measurement: test
+            fields: value
+            tags:
+              - location: top
+          data02:
+            measurement: test
+            fields: value
+            tags:
+              - location: middle
+          data03:
+            measurement: test
+            fields: value
+            tags:
+              - location: bottom
+          data04:
+            measurement: test
+            fields: value
+            tags:
+              - location: top
+
+
