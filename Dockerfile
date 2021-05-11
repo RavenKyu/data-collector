@@ -21,7 +21,7 @@ WORKDIR /src
 
 # ==============================================================================
 # 설치
-RUN python setup.py install
+RUN python -m pip install pip --upgrade && python setup.py install
 
 # ==============================================================================
 # 설치파일 정리
