@@ -18,7 +18,7 @@
               print(_gv)
               response = s.get(f'http://{host}:{port}/api/v1/schedules/{schedule_name}/data?last_fetch')
               if response.status_code != 200:
-                  raise Exception(f'code: {response.status_code}\nmessages: {response.reason}')
+                  raise Exception(f'name: {schedule_names} code: {response.status_code} messages: {response.reason}')
               data = json.loads(response.text)
           if data:
             _gv['last'] = data

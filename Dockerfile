@@ -29,6 +29,10 @@ WORKDIR /root
 RUN rm -rf /src
 RUN apk del .build-deps
 
+# =============================================================================
+# 로그파일 위치 생성
+RUN mkdir -p /var/log/app
+
 EXPOSE 5000
 
 ENTRYPOINT ["data-collector"]

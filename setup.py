@@ -29,10 +29,15 @@ setup(
         'requests',
         'redis'
     ],
+    package_dir={"data_collector": "data_collector"},
     tests_require=tests_require,
     packages=find_packages(
-        exclude=['tests', 'tests.*']),
-    package_data={},
+        where='.',
+        include=['data_collector',
+                 'data_collector.*'],
+        exclude=['dummy-*', 'tests', 'tests.*']),
+    package_data={
+        "": ["*.cfg"]},
     classifiers=[
         "Development Status :: 4 - Beta",
         "Environment :: Console",

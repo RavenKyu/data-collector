@@ -1,17 +1,15 @@
+import time
 import os
 import types
 import operator
-import yaml
 import json
 import urllib3
 import requests
 import inspect
+import logging
 from celery import Celery
 
 from apscheduler.schedulers.background import BackgroundScheduler
-
-from data_collector.utils.logger import get_logger
-# from data_collector.api.api import API
 from data_collector import (ExceptionResponse, ExceptionScheduleReduplicated)
 
 
@@ -42,8 +40,6 @@ def crontab_add_second(crontab):
 ###############################################################################
 class DataCollector:
     def __init__(self):
-        self.logger = get_logger('data-collector')
-
         self.scheduler = BackgroundScheduler(timezone="Asia/Seoul")
         self.scheduler.start()
         self.templates = dict()
@@ -55,6 +51,7 @@ class DataCollector:
 
     # =========================================================================
     def add_job_schedules(self, schedule_templates: list):
+        logging.debug("Adding schedules with template.")
         for schedule_template in schedule_templates:
             schedule_name, trigger = operator.itemgetter(
                 'schedule_name', 'trigger')(schedule_template)
@@ -63,8 +60,9 @@ class DataCollector:
             schedule_names = [x['schedule_name'] for x in
                               self.get_schedule_jobs()]
             if schedule_name in schedule_names:
-                msg = f'The schedule name \'{schedule_name}\' is already assigned.'
-                self.logger.error(msg)
+                msg = f'The schedule name \'{schedule_name}\' ' \
+                      f'is already assigned.'
+                logging.error(msg)
                 raise ExceptionScheduleReduplicated(msg)
 
             self._add_job_schedule(
@@ -90,7 +88,8 @@ class DataCollector:
             id=key,
             trigger=trigger_type)
         arguments = {**arguments, **trigger_setting}
-
+        logging.debug(f'Schedule "{key}" is added '
+                      f'in the job scheduler.')
         self.scheduler.pause()
         try:
             self.scheduler.add_job(**arguments)
@@ -100,20 +99,26 @@ class DataCollector:
     # =========================================================================
     def remove_job_schedule(self, schedule_name: str):
         self.get_schedule_job(schedule_name)
+        logging.debug(
+            f'Removing the schedule "{schedule_name}" from scheduler.')
         self.scheduler.remove_job(schedule_name)
         try:
+            logging.debug(f'Removing the schedule.')
             del self.templates[schedule_name]
             del self.__global_store[schedule_name]
         except KeyError:
-            # it should be failing to collect data. such as not connecting.
-            pass
+            logging.warning(
+                f'Failed to find the schedule name "{schedule_name}". '
+                f'It should be failing to collect data. '
+                f'please check the connection is ok.')
 
+        logging.debug(f'Removing the template "{schedule_name}" '
+                      f'from the template store.')
         return
 
-
     # =========================================================================
-    def modify_job_schedule(self, schedule_name, trigger_type,
-                            trigger_args):
+    def modify_job_schedule(self, schedule_name, trigger_type, trigger_args):
+        logging.debug('Modifying the job schedule "{schedule_name}".')
         if trigger_type == 'crontab' and 'crontab' in trigger_args:
             crontab = self.crontab_add_second(trigger_args['crontab'])
             trigger = 'cron'
@@ -163,33 +168,39 @@ class DataCollector:
         try:
             _gv = self.__global_store[name]
             arguments = {**arguments, **_gv}
-            filterd_arguments = DataCollector.filter_dict(arguments, module.main)
-            data = module.main(**filterd_arguments)
+            filtered_arguments = DataCollector.filter_dict(arguments, module.main)
+            logging.debug(f'{name} - Executing the script')
+            data = module.main(**filtered_arguments)
         except Exception as e:
             code = DataCollector.insert_number_each_line(code)
-            self.logger.error(f'{e}\ncode: \n{code}')
+            logging.error(f'{e}\ncode: \n{code}')
             raise
         return data
 
     # =========================================================================
     def request_data(self, schedule_name):
+        st = time.time()
         schedule = self.templates[schedule_name]
         if schedule_name not in self.templates:
             msg = f'The template "{schedule_name}" ' \
                   f'is not in the main template store'
-            self.logger.error(msg)
+            logging.error(msg)
             raise KeyError(msg)
 
         # checking use flag
         if not schedule['use']:
-            self.logger.info(f'{schedule_name} is disabled.')
+            logging.info(f'{schedule_name} is disabled.')
             return
 
         # source
-        data = self._source(schedule_name, schedule['source'])
+        try:
+            data = self._source(schedule_name, schedule['source'])
+        except Exception as e:
+            logging.error(f'{schedule_name} - {e}')
+            raise
         if data is None:
             message = f'[{schedule_name}] The user function returned None.'
-            self.logger.warning(message)
+            logging.warning(message)
 
         # works
         # calling function for each works with arguments via celery
@@ -214,10 +225,15 @@ class DataCollector:
             self.emit_event(schedule_name, event)
         except (urllib3.exceptions.MaxRetryError,
                 requests.exceptions.ConnectionError) as e:
-            self.logger.error(f'Connection Error: Failed to emit events.')
+            logging.error(f'Connection Error: Failed to emit events.')
         except Exception as e:
+            logging.error(f'{event["name"]} - {e}')
             import traceback
             traceback.print_exc()
+        latency_ms = int((time.time() - st) * 1000)
+        logging.info(f'{schedule_name} '
+                     f'- Succeed collecting data and emitting events '
+                     f'- {latency_ms}ms')
         return
 
     # =========================================================================
@@ -228,14 +244,11 @@ class DataCollector:
             if response.status_code != 200:
                 raise Exception(
                     f'code: {response.status_code}\n'
-                    f'messages: [{name}] - {response.reason}')
-            data = json.loads(response.text)
-            self.logger.info(f'[{name}] emitted a event.')
+                    f'messages: {name} - {response.reason}')
 
     # =========================================================================
     def remove_job_schedule(self, _id: str):
         self.scheduler.remove_job(_id)
-        del self.data[_id]
         return
 
     # =========================================================================
@@ -246,6 +259,7 @@ class DataCollector:
     def get_schedule_jobs(self):
         jobs = self.scheduler.get_jobs()
         if not jobs:
+            logging.debug('No schedules running now.')
             return jobs
         result = list()
         for job in jobs:
