@@ -77,7 +77,7 @@ class DataCollector:
     # =========================================================================
     def _add_job_schedule(self, key, trigger_type, trigger_setting):
         if trigger_type == 'crontab' and 'crontab' in trigger_setting:
-            crontab = self.crontab_add_second(trigger_setting['crontab'])
+            crontab = crontab_add_second(trigger_setting['crontab'])
             trigger_type = 'cron'
             trigger_setting = {**trigger_setting, **crontab}
             del trigger_setting['crontab']
@@ -120,7 +120,7 @@ class DataCollector:
     def modify_job_schedule(self, schedule_name, trigger_type, trigger_args):
         logging.debug('Modifying the job schedule "{schedule_name}".')
         if trigger_type == 'crontab' and 'crontab' in trigger_args:
-            crontab = self.crontab_add_second(trigger_args['crontab'])
+            crontab = crontab_add_second(trigger_args['crontab'])
             trigger = 'cron'
 
             setting = {**trigger_args, **crontab}
